@@ -3,15 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Integralia v0.1</title>
+    <title>Integralia v0.3 - Asset Pipeline</title>
     <style>
         :root {
-            --bg-color: #111;
-            --wall-color: #333;
-            --wall-border: #555;
-            --text-main: #0f0;
-            --text-alert: #f00;
-            --btn-bg: #222;
+            --bg-color: #050505;
+            --text-main: #00ffcc;
+            --text-alert: #ff4444;
+            --btn-bg: #1a1c1e;
         }
 
         body {
@@ -24,6 +22,7 @@
             align-items: center;
             height: 100vh;
             overflow: hidden;
+            user-select: none;
         }
 
         #game-container {
@@ -32,7 +31,7 @@
             position: relative;
             background: #000;
             border: 4px solid var(--text-main);
-            box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
+            box-shadow: 0 0 30px rgba(0, 255, 204, 0.15);
         }
 
         /* Pseudo-3D Viewport */
@@ -43,30 +42,43 @@
             perspective: 600px;
             overflow: hidden;
             border-bottom: 2px solid var(--text-main);
+            background: #000;
+        }
+
+        /* Camera wrapper for animations */
+        #camera {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            transform-style: preserve-3d;
         }
 
         .wall {
             position: absolute;
-            background-color: var(--wall-color);
-            border: 2px solid var(--wall-border);
+            background-color: #222; /* Fallback */
+            border: 2px solid #000;
             display: flex;
             justify-content: center;
-            align-items: center;
-            font-size: 24px;
-            font-weight: bold;
+            align-items: flex-end;
+            box-shadow: inset 0 0 80px rgba(0,0,0,0.9);
+            /* Prep for external assets */
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
         }
 
-        /* Basic CSS 3D Room setup */
+        /* 3D Room Geometry */
         #wall-front { width: 400px; height: 300px; left: 200px; top: 60px; transform: translateZ(-200px); }
         #wall-left { width: 400px; height: 300px; left: -100px; top: 60px; transform: rotateY(90deg) translateZ(-100px); }
         #wall-right { width: 400px; height: 300px; left: 500px; top: 60px; transform: rotateY(-90deg) translateZ(-100px); }
-        #floor { width: 800px; height: 400px; left: 0; top: 250px; background: #1a1a1a; transform: rotateX(90deg) translateZ(-100px); border: none; }
+        #floor { width: 1000px; height: 600px; left: -100px; top: 200px; transform: rotateX(85deg) translateZ(-150px); border: none; }
+        #ceiling { width: 1000px; height: 600px; left: -100px; top: -350px; transform: rotateX(-85deg) translateZ(-150px); border: none; }
 
         /* UI overlay */
         #minimap {
             position: absolute;
-            top: 10px;
-            right: 10px;
+            top: 15px;
+            right: 15px;
             width: 100px;
             height: 100px;
             background: rgba(0, 0, 0, 0.8);
@@ -74,10 +86,11 @@
             display: grid;
             grid-template-columns: repeat(5, 1fr);
             grid-template-rows: repeat(5, 1fr);
+            z-index: 5;
         }
 
-        .map-cell { border: 1px solid #333; }
-        .map-cell.active { background: var(--text-main); }
+        .map-cell { border: 1px solid #222; }
+        .map-cell.active { background: var(--text-main); box-shadow: 0 0 10px var(--text-main); }
 
         /* Controls Area */
         #controls-area {
@@ -88,96 +101,60 @@
             align-items: center;
             padding: 0 20px;
             box-sizing: border-box;
+            background: #050505;
         }
 
-        #d-pad {
-            display: grid;
-            grid-template-columns: 50px 50px 50px;
-            grid-template-rows: 50px 50px;
-            gap: 5px;
-        }
-
-        button {
-            background: var(--btn-bg);
-            color: var(--text-main);
-            border: 1px solid var(--text-main);
-            cursor: pointer;
-            font-family: inherit;
-            font-weight: bold;
-            font-size: 16px;
-        }
-        
+        #d-pad { display: grid; grid-template-columns: 50px 50px 50px; grid-template-rows: 50px 50px; gap: 8px; }
+        button { background: var(--btn-bg); color: var(--text-main); border: 1px solid var(--text-main); cursor: pointer; font-family: inherit; font-weight: bold; font-size: 18px; transition: all 0.1s; }
         button:hover { background: var(--text-main); color: #000; }
-        button:disabled { border-color: #555; color: #555; cursor: not-allowed; background: transparent; }
-
+        button:active { transform: scale(0.9); }
+        
         .btn-up { grid-column: 2; grid-row: 1; }
         .btn-left { grid-column: 1; grid-row: 2; }
         .btn-down { grid-column: 2; grid-row: 2; }
         .btn-right { grid-column: 3; grid-row: 2; }
 
-        #log {
-            flex-grow: 1;
-            margin-left: 20px;
-            height: 100px;
-            background: #000;
-            border: 1px solid #555;
-            padding: 10px;
-            overflow-y: auto;
-            font-size: 14px;
-        }
+        #log { flex-grow: 1; margin-left: 30px; height: 120px; background: #0a0a0a; border: 1px solid #333; padding: 10px; overflow-y: auto; font-size: 14px; line-height: 1.4; color: #aaa; }
+        #log span.highlight { color: var(--text-main); }
 
         /* Combat Screen Overlay */
-        #combat-screen {
-            display: none;
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(20, 0, 0, 0.95);
-            z-index: 10;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        }
+        #combat-screen { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(10, 0, 0, 0.98); z-index: 10; flex-direction: column; justify-content: center; align-items: center; }
+        #enemy-sprite { font-size: 80px; margin-bottom: 20px; color: var(--text-alert); text-shadow: 0 0 20px rgba(255, 0, 0, 0.5); animation: float 2s ease-in-out infinite, pulse 1.5s infinite; }
 
-        #enemy-sprite {
-            font-size: 64px;
-            margin-bottom: 20px;
-            color: var(--text-alert);
-            animation: float 2s ease-in-out infinite;
-        }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.8; } }
 
-        @keyframes float {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-20px); }
-        }
+        .answers-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin-top: 30px; max-width: 600px; }
+        .answer-btn { padding: 15px 30px; font-size: 20px; border-color: var(--text-alert); color: var(--text-alert); min-width: 150px; }
+        .answer-btn:hover { background: var(--text-alert); color: #000; box-shadow: 0 0 15px var(--text-alert); }
 
-        .answers-grid {
-            display: flex;
-            gap: 15px;
-            margin-top: 30px;
-        }
+        /* Camera Animations */
+        @keyframes stepForward { 0% { transform: scale(1) translateZ(0); } 50% { transform: scale(1.1) translateZ(50px); filter: brightness(1.2); } 100% { transform: scale(1) translateZ(0); } }
+        @keyframes stepBackward { 0% { transform: scale(1) translateZ(0); } 50% { transform: scale(0.9) translateZ(-50px); filter: brightness(0.8); } 100% { transform: scale(1) translateZ(0); } }
+        @keyframes turnLeftAnim { 0% { transform: rotateY(0deg); } 50% { transform: rotateY(5deg) translateX(20px); } 100% { transform: rotateY(0deg); } }
+        @keyframes turnRightAnim { 0% { transform: rotateY(0deg); } 50% { transform: rotateY(-5deg) translateX(-20px); } 100% { transform: rotateY(0deg); } }
 
-        .answer-btn {
-            padding: 15px 30px;
-            font-size: 18px;
-            border-color: var(--text-alert);
-            color: var(--text-alert);
+        .doorway {
+            width: 160px; height: 220px; 
+            background: rgba(0,0,0,0.9); /* Darkness of next room */
+            border: 8px solid #1a1a1a; 
+            border-bottom: none;
+            box-shadow: inset 0 20px 50px rgba(0,0,0,1);
+            position: relative;
         }
-        
-        .answer-btn:hover {
-            background: var(--text-alert);
-            color: #000;
-        }
-
     </style>
 </head>
 <body>
 
 <div id="game-container">
     <div id="viewport">
-        <div id="floor" class="wall"></div>
-        <div id="wall-left" class="wall"></div>
-        <div id="wall-front" class="wall"></div>
-        <div id="wall-right" class="wall"></div>
+        <div id="camera">
+            <div id="ceiling" class="wall"></div>
+            <div id="floor" class="wall"></div>
+            <div id="wall-left" class="wall"></div>
+            <div id="wall-front" class="wall"></div>
+            <div id="wall-right" class="wall"></div>
+        </div>
         <div id="minimap"></div>
     </div>
 
@@ -188,24 +165,72 @@
             <button class="btn-down" onclick="moveBackward()">S</button>
             <button class="btn-right" onclick="turn(1)">D</button>
         </div>
-        <div id="log">Welcome to the Dungeon.<br>Find the Skeletons.<br>Equip your Power Rule Mace.</div>
+        <div id="log"><span class="highlight">ASSET PIPELINE ONLINE.</span><br>Navigating Dungeon.<br>Find the Equations.</div>
     </div>
 
     <div id="combat-screen">
-        <h2 style="color: var(--text-alert)">SKELETON ENCOUNTERED!</h2>
+        <h2 style="color: var(--text-alert); letter-spacing: 2px;">SKELETON ENCOUNTERED!</h2>
         <div id="enemy-sprite">∫ 2x dx</div>
-        <p>Equip: Power Rule Mace</p>
-        <div class="answers-grid" id="answers-container">
-            </div>
+        <p style="color: #aaa; font-size: 18px;">Weapon: <span style="color: #fff">Power Rule Mace</span></p>
+        <div class="answers-grid" id="answers-container"></div>
     </div>
 </div>
 
 <script>
+    // --- ASSET CONFIGURATION ---
+    // Replace these paths with your actual AI-generated images.
+    // Ensure images are tileable or square (e.g., 512x512) for best results.
+    const TEXTURES = {
+        walls: [
+            'assets/wall_brick.png', 
+            'assets/wall_stone.png', 
+            'assets/wall_moss.png'
+        ],
+        floors: [
+            'assets/floor_tile.png', 
+            'assets/floor_dirt.png'
+        ],
+        ceilings: [
+            'assets/ceil_wood.png', 
+            'assets/ceil_stone.png'
+        ],
+        // Fallback colors so the game works before you add images
+        fallbackWalls: ['#2c3e50', '#34495e', '#2c2f33'],
+        fallbackFloors: ['#27ae60', '#2980b9'],
+        fallbackCeilings: ['#3e2723', '#212121']
+    };
+
     // --- GAME STATE ---
     const GRID_SIZE = 5;
     let player = { x: 0, y: 0, dir: 0 }; // dir: 0=N, 1=E, 2=S, 3=W
     let inCombat = false;
     let currentCorrectAnswer = "";
+    const dirs = [ {x:0, y:-1}, {x:1, y:0}, {x:0, y:1}, {x:-1, y:0} ];
+
+    // --- PROCEDURAL GENERATION ---
+    // This creates a consistent "seed" for any given room coordinate.
+    // Room [1,2] will always return the same seed.
+    function getRoomSeed(x, y) {
+        return Math.abs(Math.sin(x * 12.9898 + y * 78.233) * 43758.5453);
+    }
+
+    function getRoomTheme(x, y) {
+        const seed = getRoomSeed(x, y);
+        
+        // Use the seed to pick indices for arrays
+        const wIdx = Math.floor(seed * 100) % TEXTURES.walls.length;
+        const fIdx = Math.floor(seed * 200) % TEXTURES.floors.length;
+        const cIdx = Math.floor(seed * 300) % TEXTURES.ceilings.length;
+
+        return {
+            wallImage: TEXTURES.walls[wIdx],
+            wallColor: TEXTURES.fallbackWalls[wIdx],
+            floorImage: TEXTURES.floors[fIdx],
+            floorColor: TEXTURES.fallbackFloors[fIdx],
+            ceilImage: TEXTURES.ceilings[cIdx],
+            ceilColor: TEXTURES.fallbackCeilings[cIdx]
+        };
+    }
 
     // --- INITIALIZATION ---
     function init() {
@@ -215,35 +240,41 @@
     }
 
     // --- EXPLORATION MECHANICS ---
-    const dirs = [ {x:0, y:-1}, {x:1, y:0}, {x:0, y:1}, {x:-1, y:0} ]; // N, E, S, W
-
     function handleInput(e) {
         if (inCombat) return;
-        if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') moveForward();
-        if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') moveBackward();
-        if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') turn(-1);
-        if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') turn(1);
+        if (e.key === 'w' || e.key === 'ArrowUp') moveForward();
+        if (e.key === 's' || e.key === 'ArrowDown') moveBackward();
+        if (e.key === 'a' || e.key === 'ArrowLeft') turn(-1);
+        if (e.key === 'd' || e.key === 'ArrowRight') turn(1);
+    }
+
+    function triggerAnimation(animName) {
+        const cam = document.getElementById('camera');
+        cam.style.animation = 'none';
+        void cam.offsetWidth; 
+        cam.style.animation = `${animName} 0.25s ease-out`;
     }
 
     function moveForward() {
         if (inCombat) return;
         let nx = player.x + dirs[player.dir].x;
         let ny = player.y + dirs[player.dir].y;
-        attemptMove(nx, ny);
+        if (attemptMove(nx, ny)) triggerAnimation('stepForward');
     }
 
     function moveBackward() {
         if (inCombat) return;
         let nx = player.x - dirs[player.dir].x;
         let ny = player.y - dirs[player.dir].y;
-        attemptMove(nx, ny);
+        if (attemptMove(nx, ny)) triggerAnimation('stepBackward');
     }
 
     function turn(direction) {
         if (inCombat) return;
         player.dir = (player.dir + direction + 4) % 4;
+        triggerAnimation(direction === -1 ? 'turnLeftAnim' : 'turnRightAnim');
         updateView();
-        logMessage(`Turned ${['North', 'East', 'South', 'West'][player.dir]}.`);
+        logMessage(`Turned <span class="highlight">${['North', 'East', 'South', 'West'][player.dir]}</span>.`);
     }
 
     function attemptMove(nx, ny) {
@@ -252,28 +283,52 @@
             player.y = ny;
             updateView();
             drawMinimap();
-            logMessage(`Moved to room (${player.x}, ${player.y}).`);
-            
-            // 30% chance for an encounter
-            if (Math.random() < 0.3) {
-                startCombat();
-            }
+            logMessage(`Entered room [${player.x}, ${player.y}].`);
+            if (Math.random() < 0.3) setTimeout(startCombat, 300);
+            return true;
         } else {
-            logMessage("You bump into a dungeon wall.");
+            logMessage("<span style='color:#ff0'>The path is blocked by a solid wall.</span>");
+            return false;
         }
     }
 
-    // --- VISUAL RENDERING ---
+    // --- PROCEDURAL VISUAL RENDERING ---
+    function applyTexture(element, imageUrl, fallbackColor) {
+        element.style.backgroundColor = fallbackColor;
+        element.style.backgroundImage = `url('${imageUrl}')`;
+    }
+
     function updateView() {
         const front = document.getElementById('wall-front');
+        const left = document.getElementById('wall-left');
+        const right = document.getElementById('wall-right');
+        const floor = document.getElementById('floor');
+        const ceiling = document.getElementById('ceiling');
         
-        // Simulating different wall textures based on coordinates
-        const roomHash = (player.x * 7 + player.y * 13 + player.dir * 3) % 4;
-        const colors = ['#333', '#2a2a2a', '#3d3d3d', '#222'];
-        front.style.backgroundColor = colors[roomHash];
+        // Get themes
+        const currentTheme = getRoomTheme(player.x, player.y);
         
-        // Add subtle text to the wall so it feels like a room
-        front.innerHTML = `Room [${player.x}, ${player.y}]<br>Facing ${['N', 'E', 'S', 'W'][player.dir]}`;
+        // Apply textures to current room's side walls, floor, and ceiling
+        applyTexture(left, currentTheme.wallImage, currentTheme.wallColor);
+        applyTexture(right, currentTheme.wallImage, currentTheme.wallColor);
+        applyTexture(floor, currentTheme.floorImage, currentTheme.floorColor);
+        applyTexture(ceiling, currentTheme.ceilImage, currentTheme.ceilColor);
+
+        // Look ahead to determine the front wall
+        const nx = player.x + dirs[player.dir].x;
+        const ny = player.y + dirs[player.dir].y;
+        const isBlocked = (nx < 0 || nx >= GRID_SIZE || ny < 0 || ny >= GRID_SIZE);
+        
+        // Apply base texture to the front wall
+        applyTexture(front, currentTheme.wallImage, currentTheme.wallColor);
+        
+        if (isBlocked) {
+            // Render Solid Wall with a generic poster/sign
+            front.innerHTML = `<div style="background: rgba(0,0,0,0.8); padding: 5px 10px; color: #777; border: 1px solid #444; margin-bottom: 120px; font-family: sans-serif;">DEAD END</div>`;
+        } else {
+            // Render Archway/Doorway showing path to the next room
+            front.innerHTML = `<div class="doorway"></div>`;
+        }
     }
 
     function drawMinimap() {
@@ -283,7 +338,12 @@
             for (let x = 0; x < GRID_SIZE; x++) {
                 const cell = document.createElement('div');
                 cell.className = 'map-cell';
-                if (x === player.x && y === player.y) cell.classList.add('active');
+                if (x === player.x && y === player.y) {
+                    cell.classList.add('active');
+                    const rot = player.dir * 90;
+                    cell.style.transform = `rotate(${rot}deg)`;
+                    cell.innerHTML = "<div style='width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:6px solid #000;margin:4px auto;'></div>";
+                }
                 mm.appendChild(cell);
             }
         }
@@ -297,29 +357,20 @@
     // --- MATH & COMBAT ENGINE ---
     function startCombat() {
         inCombat = true;
-        
-        // 1. Generate Polynomial
-        // Formula: ∫(c * (p+1))x^p dx = c * x^(p+1) + C
-        const p = Math.floor(Math.random() * 4) + 1; // Power: 1 to 4
-        const c = Math.floor(Math.random() * 5) + 1; // Result Coefficient: 1 to 5
-        
+        const p = Math.floor(Math.random() * 4) + 1;
+        const c = Math.floor(Math.random() * 5) + 1;
         const enemyCoef = c * (p + 1);
         const enemyEq = `∫ ${enemyCoef}x<sup>${p}</sup> dx`;
         
-        const correctStr = `${c === 1 ? '' : c}x<sup>${p+1}</sup> + C`;
-        currentCorrectAnswer = correctStr;
+        currentCorrectAnswer = `${c === 1 ? '' : c}x<sup>${p+1}</sup> + C`;
 
-        // Generate plausible wrong answers
-        const wrong1 = `${enemyCoef * p}x<sup>${p-1 === 0 ? '' : p-1}</sup> + C`; // Derivative trap
-        const wrong2 = `${c}x<sup>${p}</sup> + C`; // Forgot to raise power
-        const wrong3 = `${enemyCoef}x<sup>${p+1}</sup> + C`; // Forgot to divide
+        const wrong1 = `${enemyCoef * p}x<sup>${p-1 === 0 ? '' : p-1}</sup> + C`;
+        const wrong2 = `${c}x<sup>${p}</sup> + C`;
+        const wrong3 = `${enemyCoef}x<sup>${p+1}</sup> + C`;
 
-        let answers = [correctStr, wrong1, wrong2, wrong3];
-        // Ensure uniqueness and shuffle
-        answers = [...new Set(answers)]; 
+        let answers = [...new Set([currentCorrectAnswer, wrong1, wrong2, wrong3])]; 
         answers.sort(() => Math.random() - 0.5);
 
-        // 2. Update UI
         document.getElementById('enemy-sprite').innerHTML = enemyEq;
         const container = document.getElementById('answers-container');
         container.innerHTML = '';
@@ -333,21 +384,23 @@
         });
 
         document.getElementById('combat-screen').style.display = 'flex';
-        logMessage("<span style='color:#f00'>A Skeleton blocks your path!</span>");
+        logMessage("<span style='color:var(--text-alert)'>WARNING: Skeleton engaged!</span>");
     }
 
     function resolveAttack(selectedAnswer) {
         if (selectedAnswer === currentCorrectAnswer) {
-            // Success
-            logMessage("<span style='color:#0f0'>Direct Hit! Skeleton defeated.</span>");
-            endCombat();
-        } else {
-            // Failure
-            logMessage("<span style='color:#f00'>Your Mace bounces off! Incorrect rule applied. Try again.</span>");
-            // Optional: Shake animation on the enemy
+            logMessage("<span style='color:var(--text-main)'>Direct Hit! Skeleton defeated.</span>");
             const sprite = document.getElementById('enemy-sprite');
-            sprite.style.transform = "translateX(-10px)";
-            setTimeout(() => sprite.style.transform = "translateX(10px)", 50);
+            sprite.style.animation = 'none';
+            sprite.style.transform = 'scale(0.1) translateY(100px)';
+            sprite.style.opacity = '0';
+            sprite.style.transition = 'all 0.5s ease-in';
+            setTimeout(endCombat, 500);
+        } else {
+            logMessage("<span style='color:var(--text-alert)'>Your Mace bounces off! Try again.</span>");
+            const sprite = document.getElementById('enemy-sprite');
+            sprite.style.transform = "translateX(-20px)";
+            setTimeout(() => sprite.style.transform = "translateX(20px)", 50);
             setTimeout(() => sprite.style.transform = "none", 100);
         }
     }
@@ -355,9 +408,13 @@
     function endCombat() {
         inCombat = false;
         document.getElementById('combat-screen').style.display = 'none';
+        const sprite = document.getElementById('enemy-sprite');
+        sprite.style.transition = 'none';
+        sprite.style.opacity = '1';
+        sprite.style.transform = 'none';
+        sprite.style.animation = 'float 2s ease-in-out infinite, pulse 1.5s infinite';
     }
 
-    // Start game
     window.onload = init;
 
 </script>
