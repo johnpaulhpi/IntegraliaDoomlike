@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Integralia v0.1</title>
+    <style>
+        :root {
+            --bg-color: #111;
+            --wall-color: #333;
+            --wall-border: #555;
+            --text-main: #0f0;
+            --text-alert: #f00;
+            --btn-bg: #222;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-container {
+            width: 800px;
+            height: 600px;
+            position: relative;
+            background: #000;
+            border: 4px solid var(--text-main);
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
+        }
+
+        /* Pseudo-3D Viewport */
+        #viewport {
+            width: 100%;
+            height: 70%;
+            position: relative;
+            perspective: 600px;
+            overflow: hidden;
+            border-bottom: 2px solid var(--text-main);
+        }
+
+        .wall {
+            position: absolute;
+            background-color: var(--wall-color);
+            border: 2px solid var(--wall-border);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        /* Basic CSS 3D Room setup */
+        #wall-front { width: 400px; height: 300px; left: 200px; top: 60px; transform: translateZ(-200px); }
+        #wall-left { width: 400px; height: 300px; left: -100px; top: 60px; transform: rotateY(90deg) translateZ(-100px); }
+        #wall-right { width: 400px; height: 300px; left: 500px; top: 60px; transform: rotateY(-90deg) translateZ(-100px); }
+        #floor { width: 800px; height: 400px; left: 0; top: 250px; background: #1a1a1a; transform: rotateX(90deg) translateZ(-100px); border: none; }
+
+        /* UI overlay */
+        #minimap {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 100px;
+            height: 100px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid var(--text-main);
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            grid-template-rows: repeat(5, 1fr);
+        }
+
+        .map-cell { border: 1px solid #333; }
+        .map-cell.active { background: var(--text-main); }
+
+        /* Controls Area */
+        #controls-area {
+            width: 100%;
+            height: 30%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            box-sizing: border-box;
+        }
+
+        #d-pad {
+            display: grid;
+            grid-template-columns: 50px 50px 50px;
+            grid-template-rows: 50px 50px;
+            gap: 5px;
+        }
+
+        button {
+            background: var(--btn-bg);
+            color: var(--text-main);
+            border: 1px solid var(--text-main);
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        
+        button:hover { background: var(--text-main); color: #000; }
+        button:disabled { border-color: #555; color: #555; cursor: not-allowed; background: transparent; }
+
+        .btn-up { grid-column: 2; grid-row: 1; }
+        .btn-left { grid-column: 1; grid-row: 2; }
+        .btn-down { grid-column: 2; grid-row: 2; }
+        .btn-right { grid-column: 3; grid-row: 2; }
+
+        #log {
+            flex-grow: 1;
+            margin-left: 20px;
+            height: 100px;
+            background: #000;
+            border: 1px solid #555;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 14px;
+        }
+
+        /* Combat Screen Overlay */
+        #combat-screen {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(20, 0, 0, 0.95);
+            z-index: 10;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #enemy-sprite {
+            font-size: 64px;
+            margin-bottom: 20px;
+            color: var(--text-alert);
+            animation: float 2s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+
+        .answers-grid {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+        }
+
+        .answer-btn {
+            padding: 15px 30px;
+            font-size: 18px;
+            border-color: var(--text-alert);
+            color: var(--text-alert);
+        }
+        
+        .answer-btn:hover {
+            background: var(--text-alert);
+            color: #000;
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="viewport">
+        <div id="floor" class="wall"></div>
+        <div id="wall-left" class="wall"></div>
+        <div id="wall-front" class="wall"></div>
+        <div id="wall-right" class="wall"></div>
+        <div id="minimap"></div>
+    </div>
+
+    <div id="controls-area">
+        <div id="d-pad">
+            <button class="btn-up" onclick="moveForward()">W</button>
+            <button class="btn-left" onclick="turn(-1)">A</button>
+            <button class="btn-down" onclick="moveBackward()">S</button>
+            <button class="btn-right" onclick="turn(1)">D</button>
+        </div>
+        <div id="log">Welcome to the Dungeon.<br>Find the Skeletons.<br>Equip your Power Rule Mace.</div>
+    </div>
+
+    <div id="combat-screen">
+        <h2 style="color: var(--text-alert)">SKELETON ENCOUNTERED!</h2>
+        <div id="enemy-sprite">∫ 2x dx</div>
+        <p>Equip: Power Rule Mace</p>
+        <div class="answers-grid" id="answers-container">
+            </div>
+    </div>
+</div>
+
+<script>
+    // --- GAME STATE ---
+    const GRID_SIZE = 5;
+    let player = { x: 0, y: 0, dir: 0 }; // dir: 0=N, 1=E, 2=S, 3=W
+    let inCombat = false;
+    let currentCorrectAnswer = "";
+
+    // --- INITIALIZATION ---
+    function init() {
+        drawMinimap();
+        updateView();
+        document.addEventListener('keydown', handleInput);
+    }
+
+    // --- EXPLORATION MECHANICS ---
+    const dirs = [ {x:0, y:-1}, {x:1, y:0}, {x:0, y:1}, {x:-1, y:0} ]; // N, E, S, W
+
+    function handleInput(e) {
+        if (inCombat) return;
+        if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') moveForward();
+        if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') moveBackward();
+        if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') turn(-1);
+        if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') turn(1);
+    }
+
+    function moveForward() {
+        if (inCombat) return;
+        let nx = player.x + dirs[player.dir].x;
+        let ny = player.y + dirs[player.dir].y;
+        attemptMove(nx, ny);
+    }
+
+    function moveBackward() {
+        if (inCombat) return;
+        let nx = player.x - dirs[player.dir].x;
+        let ny = player.y - dirs[player.dir].y;
+        attemptMove(nx, ny);
+    }
+
+    function turn(direction) {
+        if (inCombat) return;
+        player.dir = (player.dir + direction + 4) % 4;
+        updateView();
+        logMessage(`Turned ${['North', 'East', 'South', 'West'][player.dir]}.`);
+    }
+
+    function attemptMove(nx, ny) {
+        if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) {
+            player.x = nx;
+            player.y = ny;
+            updateView();
+            drawMinimap();
+            logMessage(`Moved to room (${player.x}, ${player.y}).`);
+            
+            // 30% chance for an encounter
+            if (Math.random() < 0.3) {
+                startCombat();
+            }
+        } else {
+            logMessage("You bump into a dungeon wall.");
+        }
+    }
+
+    // --- VISUAL RENDERING ---
+    function updateView() {
+        const front = document.getElementById('wall-front');
+        
+        // Simulating different wall textures based on coordinates
+        const roomHash = (player.x * 7 + player.y * 13 + player.dir * 3) % 4;
+        const colors = ['#333', '#2a2a2a', '#3d3d3d', '#222'];
+        front.style.backgroundColor = colors[roomHash];
+        
+        // Add subtle text to the wall so it feels like a room
+        front.innerHTML = `Room [${player.x}, ${player.y}]<br>Facing ${['N', 'E', 'S', 'W'][player.dir]}`;
+    }
+
+    function drawMinimap() {
+        const mm = document.getElementById('minimap');
+        mm.innerHTML = '';
+        for (let y = 0; y < GRID_SIZE; y++) {
+            for (let x = 0; x < GRID_SIZE; x++) {
+                const cell = document.createElement('div');
+                cell.className = 'map-cell';
+                if (x === player.x && y === player.y) cell.classList.add('active');
+                mm.appendChild(cell);
+            }
+        }
+    }
+
+    function logMessage(msg) {
+        const log = document.getElementById('log');
+        log.innerHTML = msg + "<br>" + log.innerHTML;
+    }
+
+    // --- MATH & COMBAT ENGINE ---
+    function startCombat() {
+        inCombat = true;
+        
+        // 1. Generate Polynomial
+        // Formula: ∫(c * (p+1))x^p dx = c * x^(p+1) + C
+        const p = Math.floor(Math.random() * 4) + 1; // Power: 1 to 4
+        const c = Math.floor(Math.random() * 5) + 1; // Result Coefficient: 1 to 5
+        
+        const enemyCoef = c * (p + 1);
+        const enemyEq = `∫ ${enemyCoef}x<sup>${p}</sup> dx`;
+        
+        const correctStr = `${c === 1 ? '' : c}x<sup>${p+1}</sup> + C`;
+        currentCorrectAnswer = correctStr;
+
+        // Generate plausible wrong answers
+        const wrong1 = `${enemyCoef * p}x<sup>${p-1 === 0 ? '' : p-1}</sup> + C`; // Derivative trap
+        const wrong2 = `${c}x<sup>${p}</sup> + C`; // Forgot to raise power
+        const wrong3 = `${enemyCoef}x<sup>${p+1}</sup> + C`; // Forgot to divide
+
+        let answers = [correctStr, wrong1, wrong2, wrong3];
+        // Ensure uniqueness and shuffle
+        answers = [...new Set(answers)]; 
+        answers.sort(() => Math.random() - 0.5);
+
+        // 2. Update UI
+        document.getElementById('enemy-sprite').innerHTML = enemyEq;
+        const container = document.getElementById('answers-container');
+        container.innerHTML = '';
+
+        answers.forEach(ans => {
+            const btn = document.createElement('button');
+            btn.className = 'answer-btn';
+            btn.innerHTML = ans;
+            btn.onclick = () => resolveAttack(ans);
+            container.appendChild(btn);
+        });
+
+        document.getElementById('combat-screen').style.display = 'flex';
+        logMessage("<span style='color:#f00'>A Skeleton blocks your path!</span>");
+    }
+
+    function resolveAttack(selectedAnswer) {
+        if (selectedAnswer === currentCorrectAnswer) {
+            // Success
+            logMessage("<span style='color:#0f0'>Direct Hit! Skeleton defeated.</span>");
+            endCombat();
+        } else {
+            // Failure
+            logMessage("<span style='color:#f00'>Your Mace bounces off! Incorrect rule applied. Try again.</span>");
+            // Optional: Shake animation on the enemy
+            const sprite = document.getElementById('enemy-sprite');
+            sprite.style.transform = "translateX(-10px)";
+            setTimeout(() => sprite.style.transform = "translateX(10px)", 50);
+            setTimeout(() => sprite.style.transform = "none", 100);
+        }
+    }
+
+    function endCombat() {
+        inCombat = false;
+        document.getElementById('combat-screen').style.display = 'none';
+    }
+
+    // Start game
+    window.onload = init;
+
+</script>
+</body>
+</html>
